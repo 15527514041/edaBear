@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">易达熊</string>
+    <string name="home_title">易达熊陪读</string>
+    <string name="start_learning">🚀 开始学习</string>
+    <string name="today_tasks">今日任务</string>
+    <string name="task_complete">完成任务</string>
+    <string name="pause_detection">暂停检测</string>
+    <string name="resume_detection">继续检测</string>
+
+    <!-- 坐姿检测 -->
+    <string name="posture_normal">坐姿正常 ✅</string>
+    <string name="posture_head_down">头低得太低了，坐直一点哦！</string>
+    <string name="posture_head_tilt">头歪了，摆正小脑袋！</string>
+    <string name="posture_too_close">离屏幕太近了，后退一点！</string>
+    <string name="posture_leaning">身体歪了，坐正哦！</string>
+
+    <!-- 分心检测 -->
+    <string name="focus_normal">专注良好 ✅</string>
+    <string name="focus_gaze_away">不要东张西望，专心写作业！</string>
+    <string name="focus_hand_fidget">小手不要乱动哦～</string>
+    <string name="focus_dazing">发什么呆呢，快写作业！</string>
+
+    <!-- 权限 -->
+    <string name="permission_camera_title">需要相机权限</string>
+    <string name="permission_camera_desc">易达熊需要相机权限来检测你的坐姿和学习状态</string>
+    <string name="permission_overlay_title">需要悬浮窗权限</string>
+    <string name="permission_overlay_desc">易达熊需要悬浮窗权限来显示提醒</string>
+
+    <!-- 星星/荣誉 -->
+    <string name="today_stars">今日已获得 %d 颗星星</string>
+
+    <!-- 通用 -->
+    <string name="loading">加载中…</string>
+    <string name="confirm">确认</string>
+    <string name="cancel">取消</string>
+</resources>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 熊脸简笔画 - 圆圈+耳朵 -->
+    <!-- 大脸 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,40h40v40h-40z"
+        android:strokeWidth="2"
+        android:strokeColor="#E55A2B" />
+    <!-- 左耳 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,40a18,18 0,1 1,-12,-6"
+        android:strokeWidth="2"
+        android:strokeColor="#E55A2B" />
+    <!-- 右耳 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M74,34a18,18 0,1 0,12,-6"
+        android:strokeWidth="2"
+        android:strokeColor="#E55A2B" />
+    <!-- 左眼 -->
+    <path
+        android:fillColor="#2D2D2D"
+        android:pathData="M46,52a3,3 0,1 1,-6,0a3,3 0,1 1,6,0" />
+    <!-- 右眼 -->
+    <path
+        android:fillColor="#2D2D2D"
+        android:pathData="M62,52a3,3 0,1 1,-6,0a3,3 0,1 1,6,0" />
+    <!-- 鼻子 -->
+    <path
+        android:fillColor="#E55A2B"
+        android:pathData="M51,60l3,3l3,-3z" />
+    <!-- 嘴巴 -->
+    <path
+        android:strokeWidth="1.5"
+        android:strokeColor="#2D2D2D"
+        android:fillColor="#00000000"
+        android:pathData="M51,63q2,3 3,3q1,0 3,-3" />
+</vector>
