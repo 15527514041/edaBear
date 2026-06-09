@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.yidaxiong.app.detection.DetectionEngine
 import com.yidaxiong.app.detection.frame.FramePreprocessor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,14 +69,17 @@ class DetectionViewModel @Inject constructor(
     }
 
     private fun startDetection() {
-        val ok = detectionEngine.startDetection()
-        if (ok) { startTimeMs = System.currentTimeMillis(); startTimer(); Log.i(TAG, "检测启动") }
-        else { _uiState.update { it.copy(alertMessage = "模型加载失败，请确保模型文件已下载") }; Log.e(TAG, "启动失败") }
+        viewModelScope.launch(Dispatchers.IO) {
+            val errMsg = detectionEngine.startDetection()
+            if (errMsg == null) { startTimeMs = System.currentTimeMillis(); startTimer(); Log.i(TAG, "检测启动") }
+            else { _uiState.update { it.copy(alertMessage = errMsg) }; Log.e(TAG, "启动失败: $errMsg") }
+        }
     }
 
     private fun stopDetection() {
-        detectionEngine.stopDetection(); timerJob?.cancel(); preprocessor.reset()
-        _uiState.update { DetectionUiState(isModelReady = it.isModelReady) }; Log.i(TAG, "检测停止")
+        viewModelScope.launch(Dispatchers.IO) {
+            detectionEngine.stopDetection(); timerJob?.cancel(); preprocessor.reset()
+            _uiState.update { DetectionUiState(isModelReady = it.isModelReady) }; Log.i(TAG, "检测停止") }
     }
 
     fun onAlertDismissed() { _uiState.update { it.copy(alertMessage = null) } }

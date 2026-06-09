@@ -82,7 +82,7 @@ class DetectionEngine @Inject constructor(
     private val _alertEvents = MutableSharedFlow<AlertEvent>(replay = 0)
     val alertEvents: SharedFlow<AlertEvent> = _alertEvents.asSharedFlow()
 
-    private val frameChannel = Channel<Bitmap>(capacity = Channel.CONFLATED)
+    private var frameChannel: Channel<Bitmap>? = null
     private val engineScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("DetectionEngine"))
     private var frameProcessorJob: Job? = null
 
@@ -96,33 +96,53 @@ class DetectionEngine @Inject constructor(
     private var hasLastFrame = false
     private var startTimeMs = 0L
 
-    fun startDetection(): Boolean {
+    /**
+     * @return null on success, error message string on failure
+     */
+    @Synchronized
+    fun startDetection(): String? {
         Log.i(TAG, "开始检测，加载模型...")
         alertManager.reset()
         val faceOk = faceMesh.initialize()
         val poseOk = poseLite.initialize()
         val handsOk = hands.initialize()
         if (!faceOk && !poseOk && !handsOk) {
-            Log.e(TAG, "所有模型加载失败")
+            val msg = "模型加载失败（face/pose/hands 全部失败），请确认：\n1. 模型文件在 assets/ 目录\n2. 设备架构支持 MediaPipe 原生库（需 arm64-v8a）"
+            Log.e(TAG, msg)
             _detectionState.value = _detectionState.value.copy(isModelReady = false)
-            return false
+            return msg
+        }
+        val failed = mutableListOf<String>()
+        if (!faceOk) failed.add("人脸")
+        if (!poseOk) failed.add("姿态")
+        if (!handsOk) failed.add("手势")
+        if (failed.isNotEmpty()) {
+            Log.w(TAG, "部分模型加载失败: ${failed.joinToString()}")
         }
         Log.i(TAG, "模型加载: face=$faceOk, pose=$poseOk, hands=$handsOk")
         resetCounters(); hasLastFrame = false; startTimeMs = System.currentTimeMillis()
+        // 每次启动检测时重建 channel，避免复用导致的状态污染
+        frameChannel = Channel(capacity = Channel.CONFLATED)
+        val ch = frameChannel!!
         _detectionState.value = DetectionState(isDetecting = true, isModelReady = true)
-        frameProcessorJob = engineScope.launch { for (bm in frameChannel) processFrame(bm) }
-        return true
+        frameProcessorJob = engineScope.launch { for (bm in ch) processFrame(bm) }
+        return null
     }
 
+    @Synchronized
     fun stopDetection() {
         Log.i(TAG, "停止检测")
-        frameProcessorJob?.cancel(); frameProcessorJob = null
+        // 先关闭 channel 让消费者协程结束，然后等它完成再关闭模型，避免竞态崩溃
+        frameChannel?.close()
+        runBlocking { frameProcessorJob?.join() }
+        frameProcessorJob = null
+        frameChannel = null
         _detectionState.value = DetectionState(isDetecting = false, isModelReady = false)
         faceMesh.close(); poseLite.close(); hands.close()
         alertManager.reset(); resetCounters()
     }
 
-    fun onFrame(bitmap: Bitmap) { frameChannel.trySend(bitmap) }
+    fun onFrame(bitmap: Bitmap) { frameChannel?.trySend(bitmap) }
 
     fun destroy() { stopDetection(); engineScope.cancel() }
 
@@ -141,7 +161,7 @@ class DetectionEngine @Inject constructor(
             checkPosture(ps); checkDistraction(fs)
             lastHeadPitch = dr.headPitch; lastGazeX = dr.gazeVector.first; lastGazeY = dr.gazeVector.second
             hasLastFrame = true
-        } catch (e: Exception) { Log.e(TAG, "帧处理异常: ${e.message}", e) }
+        } catch (e: Throwable) { Log.e(TAG, "帧处理异常: ${e.message}", e) }
         finally { bitmap.recycle() }
     }
 

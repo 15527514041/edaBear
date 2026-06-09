@@ -1,26 +1,66 @@
-*.iml
-.gradle
-.gradle-cache/
-.android_sdk_home/
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-/.android
-/.kotlin
-/app/build
+# ==============================================
+# 编译产物 & 安装包
+# ==============================================
 *.apk
+*.ap_
 *.aab
+*.aar
 *.dex
 *.class
+
+# ==============================================
+# Gradle 缓存 & 构建目录
+# ==============================================
+.gradle/
+build/
+*/build/
+!gradle/wrapper/gradle-wrapper.properties
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==============================================
+# 本地环境配置（每个人都不一样，千万别提交）
+# ==============================================
+local.properties
+
+# ==============================================
+# Android Studio / IntelliJ IDEA 配置
+# ==============================================
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea/caches/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/navEditor.xml
+
+# ==============================================
+# 资源 & 临时文件
+# ==============================================
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+out/
+bin/
+gen/
+
+# ==============================================
+# 日志 & 调试文件
+# ==============================================
 *.log
 *.hprof
+
+# ==============================================
+# 签名密钥（敏感！不要提交）
+# ==============================================
+*.jks
+*.keystore
+
+# ==============================================
+# 系统文件
+# ==============================================
+.DS_Store
+Thumbs.db
+*.swp

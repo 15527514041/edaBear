@@ -45,7 +45,7 @@ class FramePreprocessor @Inject constructor() {
 
             if (rotatedBitmap !== bitmap) bitmap.recycle()
             rotatedBitmap
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "预处理失败: ${e.message}", e)
             null
         } finally {

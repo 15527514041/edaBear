@@ -27,7 +27,7 @@ class MediaPipePoseLite @Inject constructor(@ApplicationContext private val cont
                 .setMinPoseDetectionConfidence(0.5f).setMinPosePresenceConfidence(0.5f).build()
             landmarker = PoseLandmarker.createFromOptions(context, opts)
             Log.i(TAG, "加载成功"); true
-        } catch (e: Exception) { Log.e(TAG, "加载失败: ${e.message}", e); landmarker = null; false }
+        } catch (e: Throwable) { Log.e(TAG, "加载失败: ${e.message}", e); landmarker = null; false }
     }
 
     fun detect(bitmap: android.graphics.Bitmap): PoseLandmarkerResult? {
