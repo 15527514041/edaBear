@@ -19,10 +19,6 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
-
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -42,6 +38,11 @@ android {
             isDebuggable = true
             buildConfigField("boolean", "USE_MOCK", "true")
             signingConfig = signingConfigs.getByName("debug")
+            ndk {
+                // arm64-v8a: 真机; x86: 模拟器（如 Pixel Tablet）
+                // MediaPipe 没有提供 x86_64 库，但 x86_64 模拟器可兼容运行 x86 库
+                abiFilters += listOf("arm64-v8a", "x86")
+            }
         }
         release {
             isMinifyEnabled = true
@@ -51,6 +52,9 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "USE_MOCK", "false")
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
         }
     }
 

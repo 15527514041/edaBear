@@ -1,6 +1,8 @@
 package com.yidaxiong.app.ui.home
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,13 +44,19 @@ fun HomeScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(horizontal = 24.dp)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ── 顶部内边距 ──
+            Spacer(modifier = Modifier.height(24.dp))
+
             // ── 今日任务卡片 ──
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -90,7 +98,7 @@ fun HomeScreen(
                 todayStars = uiState.todayStars
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // ── 开始学习按钮 ──
             Button(
