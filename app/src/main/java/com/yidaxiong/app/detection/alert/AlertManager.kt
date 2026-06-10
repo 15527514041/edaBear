@@ -1,5 +1,6 @@
 package com.yidaxiong.app.detection.alert
 
+import android.util.Log
 import com.yidaxiong.app.detection.AlertEvent
 import com.yidaxiong.app.detection.AlertType
 import com.yidaxiong.app.detection.rule.RuleConfig
@@ -16,15 +17,17 @@ import javax.inject.Singleton
  * - 违规触发时调用 TtsManager.speak()
  * - 发送 AlertEvent 到 UI State
  * - 实现提醒冷却（AlertCooldown）
- *
- * Phase 5 实现完整功能。
  */
 @Singleton
 class AlertManager @Inject constructor(
     private val ttsManager: TtsManager
 ) {
 
-    private val _alertEvents = MutableSharedFlow<AlertEvent>(replay = 0)
+    companion object {
+        private const val TAG = "AlertManager"
+    }
+
+    private val _alertEvents = MutableSharedFlow<AlertEvent>(replay = 0, extraBufferCapacity = 8)
     val alertEvents: SharedFlow<AlertEvent> = _alertEvents.asSharedFlow()
 
     private var lastAlertTime = 0L
@@ -37,11 +40,21 @@ class AlertManager @Inject constructor(
         val cooldownMs = RuleConfig.alertCooldownSeconds * 1000L
 
         // 冷却期内不重复提醒
-        if (now - lastAlertTime < cooldownMs) return
+        if (now - lastAlertTime < cooldownMs) {
+            Log.d(TAG, "冷却期内，跳过提醒: $message")
+            return
+        }
         lastAlertTime = now
 
         val event = AlertEvent(type = type, message = message)
-        // Phase 5 实现：发送事件 + TTS 播报
+        Log.i(TAG, "触发提醒: type=$type, message=$message")
+
+        // TTS 语音播报
+        ttsManager.init()
+        ttsManager.speak(message)
+
+        // 发送事件到 UI
+        _alertEvents.tryEmit(event)
     }
 
     /**

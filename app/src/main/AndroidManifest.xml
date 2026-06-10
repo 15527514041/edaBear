@@ -24,8 +24,7 @@
         android:label="易达熊"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.YiDaXiong"
-        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+        android:theme="@style/Theme.YiDaXiong">
 
         <activity
             android:name=".MainActivity"

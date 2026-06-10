@@ -18,16 +18,15 @@ import com.yidaxiong.app.domain.model.FocusStatus
 import com.yidaxiong.app.domain.model.PostureStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.sqrt
 
 data class DetectionState(
     val isDetecting: Boolean = false,
@@ -79,8 +78,8 @@ class DetectionEngine @Inject constructor(
     private val _detectionState = MutableStateFlow(DetectionState())
     val detectionState: StateFlow<DetectionState> = _detectionState.asStateFlow()
 
-    private val _alertEvents = MutableSharedFlow<AlertEvent>(replay = 0)
-    val alertEvents: SharedFlow<AlertEvent> = _alertEvents.asSharedFlow()
+    /** 暴露 AlertManager 的事件流，供 UI 层收集 */
+    val alertEvents: SharedFlow<AlertEvent> = alertManager.alertEvents
 
     private var frameChannel: Channel<Bitmap>? = null
     private val engineScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("DetectionEngine"))
@@ -148,54 +147,165 @@ class DetectionEngine @Inject constructor(
 
     private suspend fun processFrame(bitmap: Bitmap) {
         try {
+            // 1. 人脸检测（必需，核心）
             val faceResult = faceMesh.detect(bitmap)
-            if (faceResult == null || faceResult.faceLandmarks().isEmpty()) { bitmap.recycle(); return }
+            if (faceResult == null || faceResult.faceLandmarks().isEmpty()) {
+                return
+            }
+
+            // 2. 姿态检测（可选，提升坐姿判定精度）
             val poseResult = poseLite.detect(bitmap)
+
+            // 3. 手势检测（可选，分心判定）
             val handResult = hands.detect(bitmap)
+
             val faceLM = faceResult.faceLandmarks().get(0)
             val dr = extractResult(faceLM, poseResult, handResult)
-            val ps = postureRule.evaluate(dr); val fs = distractionRule.evaluate(dr)
+
+            val ps = postureRule.evaluate(dr)
+            val fs = distractionRule.evaluate(dr)
+
             val final = dr.copy(postureStatus = ps, focusStatus = fs)
+
             val elapsed = System.currentTimeMillis() - startTimeMs
             _detectionState.value = DetectionState(isDetecting = true, result = final, elapsedMs = elapsed, isModelReady = true)
-            checkPosture(ps); checkDistraction(fs)
-            lastHeadPitch = dr.headPitch; lastGazeX = dr.gazeVector.first; lastGazeY = dr.gazeVector.second
+
+            checkPosture(ps)
+            checkDistraction(fs)
+
+            lastHeadPitch = dr.headPitch
+            lastGazeX = dr.gazeVector.first
+            lastGazeY = dr.gazeVector.second
             hasLastFrame = true
-        } catch (e: Throwable) { Log.e(TAG, "帧处理异常: ${e.message}", e) }
-        finally { bitmap.recycle() }
+        } catch (e: Throwable) {
+            Log.e(TAG, "帧处理异常: ${e.message}", e)
+        } finally {
+            bitmap.recycle()
+        }
     }
 
-    private fun extractResult(face: List<NormalizedLandmark>, pose: PoseLandmarkerResult?, hand: HandLandmarkerResult?): DetectionResult {
-        val hp = Math.toDegrees(atan2((face[FaceLM.NOSE_TIP].z() - face[FaceLM.CHIN].z()).toDouble(), (face[FaceLM.NOSE_TIP].y() - face[FaceLM.CHIN].y()).toDouble())).toFloat()
-        var minX=Float.MAX_VALUE;var minY=Float.MAX_VALUE;var maxX=Float.MIN_VALUE;var maxY=Float.MIN_VALUE
-        for (lm in face) { if (lm.x()<minX) minX=lm.x(); if (lm.y()<minY) minY=lm.y(); if (lm.x()>maxX) maxX=lm.x(); if (lm.y()>maxY) maxY=lm.y() }
-        val far = (maxX-minX)*(maxY-minY)
-        val earDiff = abs(face[FaceLM.LEFT_EAR].y()-face[FaceLM.RIGHT_EAR].y())
-        val le = face[FaceLM.LEFT_EYE_INNER]; val re = face[FaceLM.RIGHT_EYE_INNER]; val no = face[FaceLM.NOSE_TIP]
-        val ecx = (le.x()+re.x())/2f; val ecy = (le.y()+re.y())/2f
-        val gv = Pair(ecx-no.x(), ecy-no.y())
-        val st = if (pose!=null&&pose.landmarks().isNotEmpty()) { val p=pose.landmarks()[0]; abs(p[PoseLM.LEFT_SHOULDER].y()-p[PoseLM.RIGHT_SHOULDER].y()) } else 0f
-        var hmd=0f; var hpd=0f
-        if (hand!=null&&hand.landmarks().isNotEmpty()) { val h=hand.landmarks()[0]; val wx=h[HandLM.WRIST].x();val wy=h[HandLM.WRIST].y()
-            if (hasLastFrame) hmd=abs(wx-lastHandWristX)+abs(wy-lastHandWristY); lastHandWristX=wx;lastHandWristY=wy
-            val tt=h[HandLM.THUMB_TIP];val it=h[HandLM.INDEX_TIP]; val dx=tt.x()-it.x();val dy=tt.y()-it.y(); hpd= kotlin.math.sqrt(dx*dx+dy*dy) }
-        val hpd2=if(hasLastFrame) abs(hp-lastHeadPitch) else 0f
-        val gd=if(hasLastFrame) abs(gv.first-lastGazeX)+abs(gv.second-lastGazeY) else 0f
-        return DetectionResult(headPitch=hp,faceAreaRatio=far,shoulderTilt=st,earYDiff=earDiff,gazeVector=gv,handMotionDelta=hmd,handPinchDistance=hpd,headPitchDelta=hpd2,gazeDelta=gd)
+    private fun extractResult(
+        face: List<NormalizedLandmark>,
+        pose: PoseLandmarkerResult?,
+        hand: HandLandmarkerResult?
+    ): DetectionResult {
+        // 头部俯仰角
+        val hp = Math.toDegrees(
+            atan2(
+                (face[FaceLM.NOSE_TIP].z() - face[FaceLM.CHIN].z()).toDouble(),
+                (face[FaceLM.NOSE_TIP].y() - face[FaceLM.CHIN].y()).toDouble()
+            )
+        ).toFloat()
+
+        // 人脸面积
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE; var maxY = Float.MIN_VALUE
+        for (lm in face) {
+            if (lm.x() < minX) minX = lm.x()
+            if (lm.y() < minY) minY = lm.y()
+            if (lm.x() > maxX) maxX = lm.x()
+            if (lm.y() > maxY) maxY = lm.y()
+        }
+        val faceArea = (maxX - minX) * (maxY - minY)
+
+        // 耳朵高度差（歪头）
+        val earDiff = abs(face[FaceLM.LEFT_EAR].y() - face[FaceLM.RIGHT_EAR].y())
+
+        // 视线向量（鼻尖到眼中心）
+        val leftEye = face[FaceLM.LEFT_EYE_INNER]
+        val rightEye = face[FaceLM.RIGHT_EYE_INNER]
+        val nose = face[FaceLM.NOSE_TIP]
+        val eyeCenterX = (leftEye.x() + rightEye.x()) / 2f
+        val eyeCenterY = (leftEye.y() + rightEye.y()) / 2f
+        val gazeVector = Pair(eyeCenterX - nose.x(), eyeCenterY - nose.y())
+
+        // 肩膀倾斜
+        val shoulderTilt = if (pose != null && pose.landmarks().isNotEmpty()) {
+            val p = pose.landmarks()[0]
+            abs(p[PoseLM.LEFT_SHOULDER].y() - p[PoseLM.RIGHT_SHOULDER].y())
+        } else 0f
+
+        // 手部运动
+        var handMotionDelta = 0f
+        var handPinchDistance = 0f
+        if (hand != null && hand.landmarks().isNotEmpty()) {
+            val h = hand.landmarks()[0]
+            val wx = h[HandLM.WRIST].x(); val wy = h[HandLM.WRIST].y()
+            if (hasLastFrame) {
+                handMotionDelta = abs(wx - lastHandWristX) + abs(wy - lastHandWristY)
+            }
+            lastHandWristX = wx; lastHandWristY = wy
+            val thumbTip = h[HandLM.THUMB_TIP]; val indexTip = h[HandLM.INDEX_TIP]
+            val dx = thumbTip.x() - indexTip.x(); val dy = thumbTip.y() - indexTip.y()
+            handPinchDistance = sqrt(dx * dx + dy * dy)
+        }
+
+        // 帧间变化
+        val headPitchDelta = if (hasLastFrame) abs(hp - lastHeadPitch) else 0f
+        val gazeDelta = if (hasLastFrame) {
+            abs(gazeVector.first - lastGazeX) + abs(gazeVector.second - lastGazeY)
+        } else 0f
+
+        return DetectionResult(
+            headPitch = hp,
+            faceAreaRatio = faceArea,
+            shoulderTilt = shoulderTilt,
+            earYDiff = earDiff,
+            gazeVector = gazeVector,
+            handMotionDelta = handMotionDelta,
+            handPinchDistance = handPinchDistance,
+            headPitchDelta = headPitchDelta,
+            gazeDelta = gazeDelta
+        )
     }
 
     private fun checkPosture(s: PostureStatus) {
-        if (s!=PostureStatus.GOOD&&s!=PostureStatus.UNKNOWN) { postureViolationFrames++; if(postureViolationFrames>=postureThreshold){alertManager.triggerAlert(AlertType.POSTURE_VIOLATION,msgPosture(s));postureViolationFrames=0} }
-        else postureViolationFrames=0
+        if (s != PostureStatus.GOOD && s != PostureStatus.UNKNOWN) {
+            postureViolationFrames++
+            if (postureViolationFrames >= postureThreshold) {
+                alertManager.triggerAlert(
+                    AlertType.POSTURE_VIOLATION,
+                    msgPosture(s)
+                )
+                postureViolationFrames = 0
+            }
+        } else {
+            postureViolationFrames = 0
+        }
     }
 
     private fun checkDistraction(s: FocusStatus) {
-        if (s!=FocusStatus.FOCUSED&&s!=FocusStatus.UNKNOWN) { distractionViolationFrames++; if(distractionViolationFrames>=distractionThreshold){alertManager.triggerAlert(AlertType.DISTRACTION_VIOLATION,msgDistraction(s));distractionViolationFrames=0} }
-        else distractionViolationFrames=0
+        if (s != FocusStatus.FOCUSED && s != FocusStatus.UNKNOWN) {
+            distractionViolationFrames++
+            if (distractionViolationFrames >= distractionThreshold) {
+                alertManager.triggerAlert(
+                    AlertType.DISTRACTION_VIOLATION,
+                    msgDistraction(s)
+                )
+                distractionViolationFrames = 0
+            }
+        } else {
+            distractionViolationFrames = 0
+        }
     }
 
-    private fun resetCounters() { postureViolationFrames=0;distractionViolationFrames=0 }
+    private fun resetCounters() {
+        postureViolationFrames = 0; distractionViolationFrames = 0
+    }
 
-    private fun msgPosture(s:PostureStatus)=when(s){PostureStatus.HEAD_DOWN->"小朋友，抬起头来，坐直一点哦！";PostureStatus.HEAD_TILTED->"小朋友，头不要歪哦，摆正坐好！";PostureStatus.TOO_CLOSE->"离屏幕太近了，往后靠一点！";PostureStatus.LEANING->"身体不要歪，坐正哦！";else->"注意坐姿哦！"}
-    private fun msgDistraction(s:FocusStatus)=when(s){FocusStatus.GAZE_AWAY->"小朋友，专心看屏幕，不要东张西望哦！";FocusStatus.FIDGETING->"小手不要乱动，专心学习哦！";FocusStatus.PLAYING_OBJECT->"不要玩文具，认真学习哦！";FocusStatus.DAZING->"小朋友，不要发呆，快点学习吧！";else->"专心学习哦！"}
+    private fun msgPosture(s: PostureStatus) = when (s) {
+        PostureStatus.HEAD_DOWN -> "小朋友，抬起头来，坐直一点哦！"
+        PostureStatus.HEAD_TILTED -> "小朋友，头不要歪哦，摆正坐好！"
+        PostureStatus.TOO_CLOSE -> "离屏幕太近了，往后靠一点！"
+        PostureStatus.LEANING -> "身体不要歪，坐正哦！"
+        else -> "注意坐姿哦！"
+    }
+
+    private fun msgDistraction(s: FocusStatus) = when (s) {
+        FocusStatus.GAZE_AWAY -> "小朋友，专心看屏幕，不要东张西望哦！"
+        FocusStatus.FIDGETING -> "小手不要乱动，专心学习哦！"
+        FocusStatus.PLAYING_OBJECT -> "不要玩文具，认真学习哦！"
+        FocusStatus.DAZING -> "小朋友，不要发呆，快点学习吧！"
+        else -> "专心学习哦！"
+    }
 }
